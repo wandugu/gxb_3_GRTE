@@ -293,7 +293,7 @@ def extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_
 
     all_tokens=[]
     for ex in batch_ex:
-        tokens = tokenizer.tokenize(ex["text"], max_length=args.max_len)
+        tokens = tokenizer.tokenize(ex["text"], maxlen=args.max_len)
         all_tokens.append(tokens)
 
 
