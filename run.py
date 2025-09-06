@@ -22,6 +22,8 @@ parser.add_argument('--weight_decay', default=0.0, type=float)
 parser.add_argument('--max_grad_norm', default=1.0, type=float)
 parser.add_argument('--min_num', default=1e-7, type=float)
 parser.add_argument('--base_path', default="./dataset", type=str)
+parser.add_argument('--output_path', default="./ckpt", type=str)
+parser.add_argument('--save_interval', default=1, type=int)
 
 args = parser.parse_args()
 

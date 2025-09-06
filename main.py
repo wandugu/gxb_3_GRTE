@@ -1,4 +1,4 @@
-from transformers import WEIGHTS_NAME,AdamW, get_linear_schedule_with_warmup
+from transformers import AdamW, get_linear_schedule_with_warmup
 from bert4keras.tokenizers import Tokenizer
 from model import GRTE
 from util import *
@@ -122,7 +122,7 @@ def train(args):
         torch.cuda.set_device(int(args.cuda_id))
     except:
         os.environ["CUDA_VISIBLE_DEVICES"] =args.cuda_id
-    output_path=os.path.join(args.base_path,args.dataset,"output",args.file_id)
+    output_path=os.path.join(args.output_path,args.dataset,args.file_id)
     train_path=os.path.join(args.base_path,args.dataset,"train.json")
     dev_path=os.path.join(args.base_path,args.dataset,"dev.json")
     test_path=os.path.join(args.base_path,args.dataset,"test.json")
@@ -213,10 +213,12 @@ def train(args):
                 t.update(1)
         f1, precision, recall = evaluate(args,tokenizer,id2predicate,id2label,label2id,train_model,test_dataloader,test_pred_path)
 
+        if (epoch + 1) % args.save_interval == 0:
+            torch.save(train_model.state_dict(), os.path.join(output_path, f"model_epoch_{epoch+1}.bin"))
+
         if f1 > best_f1:
-            # Save model checkpoint
             best_f1 = f1
-            torch.save(train_model.state_dict(), os.path.join(output_path, WEIGHTS_NAME))
+            torch.save(train_model.state_dict(), os.path.join(output_path, "best_model.bin"))
 
         epoch_loss = epoch_loss / dataloader.__len__()
         with open(log_path, "a", encoding="utf-8") as f:
@@ -224,7 +226,7 @@ def train(args):
                 int(epoch), epoch_loss, f1, precision, recall, best_f1), file=f)
 
 
-    train_model.load_state_dict(torch.load(os.path.join(output_path, WEIGHTS_NAME), map_location="cuda"))
+    train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
     f1, precision, recall = evaluate(args,tokenizer,id2predicate,id2label,label2id,train_model,test_dataloader,test_pred_path)
     with open(log_path, "a", encoding="utf-8") as f:
         print("test： f1:%f\tprecision:%f\trecall:%f" % (f1, precision, recall), file=f)
@@ -361,7 +363,7 @@ def test(args):
     except:
         os.environ["CUDA_VISIBLE_DEVICES"] =args.cuda_id
 
-    output_path=os.path.join(args.base_path,args.dataset,"output",args.file_id)
+    output_path=os.path.join(args.output_path,args.dataset,args.file_id)
 
     dev_path=os.path.join(args.base_path,args.dataset,"dev.json")
     test_path=os.path.join(args.base_path,args.dataset,"test.json")
@@ -396,6 +398,6 @@ def test(args):
 
     test_dataloader=data_generator(args,test_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
 
-    train_model.load_state_dict(torch.load(os.path.join(output_path, WEIGHTS_NAME), map_location="cuda"))
+    train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
     f1, precision, recall = evaluate(args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader,test_pred_path)
     print("f1:%f,precision:%f, recall:%f"%(f1, precision, recall))
