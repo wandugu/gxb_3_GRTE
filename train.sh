@@ -2,7 +2,7 @@
 
 usage() {
   cat <<USAGE
-Usage: $0 -d DATASET [-r ROUNDS] [-g GPU_ID] [-o OUTPUT_PATH] [-s SAVE_INTERVAL]
+Usage: $0 -d DATASET [-r ROUNDS] [-e EPOCHS] [-g GPU_ID] [-o OUTPUT_PATH] [-s SAVE_INTERVAL]
 
 Available DATASET options (default rounds):
   WebNLG       (rounds=4)
@@ -16,6 +16,7 @@ USAGE
 # default parameters，可在此处直接修改
 dataset="WebNLG"
 rounds=4
+epochs=50
 gpu_id=1
 output_path=./ckpt
 save_interval=1
@@ -24,10 +25,11 @@ save_interval=1
 dataset_cli=0
 rounds_cli=0
 
-while getopts "d:r:g:o:s:h" opt; do
+while getopts "d:r:e:g:o:s:h" opt; do
     case ${opt} in
       d) dataset=${OPTARG}; dataset_cli=1 ;;
       r) rounds=${OPTARG}; rounds_cli=1 ;;
+      e) epochs=${OPTARG} ;;
       g) gpu_id=${OPTARG} ;;
       o) output_path=${OPTARG} ;;
       s) save_interval=${OPTARG} ;;
@@ -64,6 +66,7 @@ CUDA_VISIBLE_DEVICES=${gpu_id} python -u run.py \
   --dataset=${dataset} \
   --train=train \
   --rounds=${rounds} \
+  --num_train_epochs=${epochs} \
   --output_path="${output_path}" \
   --save_interval=${save_interval} \
   ${load_model}

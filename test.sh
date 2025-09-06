@@ -2,7 +2,7 @@
 
 usage() {
   cat <<USAGE
-Usage: $0 -d DATASET [-r ROUNDS] [-g GPU_ID] [-o OUTPUT_PATH]
+Usage: $0 -d DATASET [-r ROUNDS] [-e EPOCHS] [-g GPU_ID] [-o OUTPUT_PATH]
 
 Available DATASET options (default rounds):
   WebNLG       (rounds=4)
@@ -16,6 +16,7 @@ USAGE
 # default parameters
  dataset="WebNLG"
  rounds=4
+ epochs=50
  gpu_id=0
  output_path=./ckpt
 
@@ -23,10 +24,11 @@ USAGE
  dataset_cli=0
  rounds_cli=0
 
-while getopts "d:r:g:o:h" opt; do
+while getopts "d:r:e:g:o:h" opt; do
     case ${opt} in
       d) dataset=${OPTARG}; dataset_cli=1 ;;
       r) rounds=${OPTARG}; rounds_cli=1 ;;
+      e) epochs=${OPTARG} ;;
       g) gpu_id=${OPTARG} ;;
       o) output_path=${OPTARG} ;;
       h) usage; exit 0 ;;
@@ -57,9 +59,10 @@ if [ ! -f "${ckpt_dir}/best_model.bin" ]; then
   exit 1
 fi
 
-CUDA_VISIBLE_DEVICES=${gpu_id} python -u run.py \
-  --cuda_id=${gpu_id} \
-  --dataset=${dataset} \
-  --train=test \
-  --rounds=${rounds} \
-  --output_path="${output_path}"
+ CUDA_VISIBLE_DEVICES=${gpu_id} python -u run.py \
+   --cuda_id=${gpu_id} \
+   --dataset=${dataset} \
+   --train=test \
+   --rounds=${rounds} \
+   --num_train_epochs=${epochs} \
+   --output_path="${output_path}"
