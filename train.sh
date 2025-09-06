@@ -16,7 +16,7 @@ USAGE
 # default parameters，可在此处直接修改
 dataset="WebNLG"
 rounds=4
-gpu_id=0
+gpu_id=1
 output_path=./ckpt
 save_interval=1
 
