@@ -44,9 +44,7 @@ class data_generator(DataGenerator):
 
             if judge(d)==False: 
                 continue
-            token_ids, _ ,mask = self.tokenizer.encode(
-                d['text'], max_length=self.max_len
-            )
+            token_ids, mask = self.tokenizer.encode(d['text'], maxlen=self.max_len)
 
             if self.is_train:
                 spoes = {}
