@@ -7,7 +7,7 @@ import pickle
 import torch
 
 def print_config(args):
-    config_path=os.path.join(args.base_path, args.dataset, "output", args.file_id,"config.txt")
+    config_path=os.path.join(args.base_path, args.dataset, "output", "config.txt")
     with open(config_path,"w",encoding="utf-8") as f:
         for k,v in sorted(vars(args).items()):
             print(k,'=',v,file=f)
