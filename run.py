@@ -9,7 +9,6 @@ parser.add_argument('--train', default="train", type=str)
 
 parser.add_argument('--batch_size', default=6, type=int)
 parser.add_argument('--test_batch_size', default=6, type=int)
-parser.add_argument('--file_id', default="99", type=str)
 parser.add_argument('--learning_rate', default=3e-5, type=float)
 parser.add_argument('--num_train_epochs', default=50, type=int)
 parser.add_argument('--fix_bert_embeddings', default=False, type=bool)
@@ -24,6 +23,7 @@ parser.add_argument('--min_num', default=1e-7, type=float)
 parser.add_argument('--base_path', default="./dataset", type=str)
 parser.add_argument('--output_path', default="./ckpt", type=str)
 parser.add_argument('--save_interval', default=1, type=int)
+parser.add_argument('--load_model', action='store_true')
 
 args = parser.parse_args()
 

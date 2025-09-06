@@ -122,7 +122,7 @@ def train(args):
         torch.cuda.set_device(int(args.cuda_id))
     except:
         os.environ["CUDA_VISIBLE_DEVICES"] =args.cuda_id
-    output_path=os.path.join(args.output_path,args.dataset,args.file_id)
+    output_path=os.path.join(args.output_path, args.dataset)
     train_path=os.path.join(args.base_path,args.dataset,"train.json")
     dev_path=os.path.join(args.base_path,args.dataset,"dev.json")
     test_path=os.path.join(args.base_path,args.dataset,"test.json")
@@ -153,6 +153,11 @@ def train(args):
 
     train_model = GRTE.from_pretrained(pretrained_model_name_or_path=args.bert_model_path,config=config)
     train_model.to("cuda")
+
+    if getattr(args, "load_model", False):
+        best_model = os.path.join(output_path, "best_model.bin")
+        if os.path.exists(best_model):
+            train_model.load_state_dict(torch.load(best_model, map_location="cuda"))
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -363,7 +368,7 @@ def test(args):
     except:
         os.environ["CUDA_VISIBLE_DEVICES"] =args.cuda_id
 
-    output_path=os.path.join(args.output_path,args.dataset,args.file_id)
+    output_path=os.path.join(args.output_path, args.dataset)
 
     dev_path=os.path.join(args.base_path,args.dataset,"dev.json")
     test_path=os.path.join(args.base_path,args.dataset,"test.json")

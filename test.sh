@@ -2,7 +2,7 @@
 
 usage() {
   cat <<USAGE
-Usage: $0 -d DATASET [-r ROUNDS] [-g GPU_ID] [-o OUTPUT_PATH] [-s SAVE_INTERVAL]
+Usage: $0 -d DATASET [-r ROUNDS] [-g GPU_ID] [-o OUTPUT_PATH]
 
 Available DATASET options (default rounds):
   WebNLG       (rounds=4)
@@ -13,30 +13,28 @@ Available DATASET options (default rounds):
 USAGE
 }
 
-# default parameters，可在此处直接修改
-dataset="WebNLG"
-rounds=4
-gpu_id=0
-output_path=./ckpt
-save_interval=1
+# default parameters
+ dataset="WebNLG"
+ rounds=4
+ gpu_id=0
+ output_path=./ckpt
 
-# 标记是否通过参数传入 dataset 或 rounds
-dataset_cli=0
-rounds_cli=0
+# flags to track if dataset/rounds provided
+ dataset_cli=0
+ rounds_cli=0
 
-while getopts "d:r:g:o:s:h" opt; do
+while getopts "d:r:g:o:h" opt; do
     case ${opt} in
       d) dataset=${OPTARG}; dataset_cli=1 ;;
       r) rounds=${OPTARG}; rounds_cli=1 ;;
       g) gpu_id=${OPTARG} ;;
       o) output_path=${OPTARG} ;;
-      s) save_interval=${OPTARG} ;;
       h) usage; exit 0 ;;
       *) usage; exit 1 ;;
     esac
 done
 
-# 根据传入的数据集设置默认轮数
+# set default rounds based on dataset
 if [ ${dataset_cli} -eq 1 ] && [ ${rounds_cli} -eq 0 ]; then
   case ${dataset} in
     WebNLG) rounds=4 ;;
@@ -54,17 +52,14 @@ else
 fi
 
 ckpt_dir="${output_path}/${dataset}"
-load_model=""
-if [ -f "${ckpt_dir}/best_model.bin" ]; then
-  load_model="--load_model"
+if [ ! -f "${ckpt_dir}/best_model.bin" ]; then
+  echo "Model not found in ${ckpt_dir}. Please train first." >&2
+  exit 1
 fi
 
 CUDA_VISIBLE_DEVICES=${gpu_id} python -u run.py \
   --cuda_id=${gpu_id} \
   --dataset=${dataset} \
-  --train=train \
+  --train=test \
   --rounds=${rounds} \
-  --output_path="${output_path}" \
-  --save_interval=${save_interval} \
-  ${load_model}
-
+  --output_path="${output_path}"
