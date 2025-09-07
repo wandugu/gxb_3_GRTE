@@ -216,7 +216,9 @@ def train(args):
                 train_model.zero_grad()
                 t.set_postfix(loss="%.4lf"%(loss.cpu().item()))
                 t.update(1)
-        f1, precision, recall = evaluate(args,tokenizer,id2predicate,id2label,label2id,train_model,test_dataloader,test_pred_path)
+        f1, precision, recall, _, _, _ = evaluate(
+            args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader, test_pred_path
+        )
 
         if (epoch + 1) % args.save_interval == 0:
             torch.save(train_model.state_dict(), os.path.join(output_path, f"model_epoch_{epoch+1}.bin"))
@@ -232,7 +234,9 @@ def train(args):
 
 
     train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
-    f1, precision, recall = evaluate(args,tokenizer,id2predicate,id2label,label2id,train_model,test_dataloader,test_pred_path)
+    f1, precision, recall, _, _, _ = evaluate(
+        args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader, test_pred_path
+    )
     with open(log_path, "a", encoding="utf-8") as f:
         print("test： f1:%f\tprecision:%f\trecall:%f" % (f1, precision, recall), file=f)
 
@@ -328,6 +332,7 @@ def extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_
 def evaluate(args,tokenizer,id2predicate,id2label,label2id,model,dataloader,evl_path):
 
     X, Y, Z = 1e-10, 1e-10, 1e-10
+    total, success, fail = 0, 0, 0
     f = open(evl_path, 'w', encoding='utf-8')
     pbar = tqdm()
     for batch in dataloader:
@@ -343,6 +348,11 @@ def evaluate(args,tokenizer,id2predicate,id2label,label2id,model,dataloader,evl_
             X += len(R & T)
             Y += len(R)
             Z += len(T)
+            total += 1
+            if R == T:
+                success += 1
+            else:
+                fail += 1
             f1, precision, recall = 2 * X / (Y + Z), X / Y, X / Z
             pbar.update()
             pbar.set_description(
@@ -359,7 +369,7 @@ def evaluate(args,tokenizer,id2predicate,id2label,label2id,model,dataloader,evl_
     pbar.close()
     f.close()
     f1, precision, recall = 2 * X / (Y + Z), X / Y, X / Z
-    return f1, precision, recall
+    return f1, precision, recall, total, success, fail
 
 
 def test(args):
@@ -404,5 +414,11 @@ def test(args):
     test_dataloader=data_generator(args,test_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
 
     train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
-    f1, precision, recall = evaluate(args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader,test_pred_path)
-    print("f1:%f,precision:%f, recall:%f"%(f1, precision, recall))
+    f1, precision, recall, total, success, fail = evaluate(
+        args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader, test_pred_path
+    )
+    print(
+        "f1:%f,precision:%f, recall:%f, total:%d, success:%d, fail:%d"
+        % (f1, precision, recall, total, success, fail)
+    )
+    print("一共测试了%d个数据，成功%d，失败%d" % (total, success, fail))
