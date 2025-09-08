@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch
 from transformers.modeling_bert import BertConfig
 import json
+from collections import defaultdict
 
 def search(pattern, sequence):
     n = len(pattern)
@@ -329,25 +330,32 @@ def extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_
     return batch_spo
 
 
-def evaluate(args,tokenizer,id2predicate,id2label,label2id,model,dataloader,evl_path):
+def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloader, evl_path, return_details=False):
 
     X, Y, Z = 1e-10, 1e-10, 1e-10
     total, success, fail = 0, 0, 0
+    per_class = defaultdict(lambda: {'tp': 0, 'pred': 0, 'gold': 0})
     f = open(evl_path, 'w', encoding='utf-8')
     pbar = tqdm()
     for batch in dataloader:
 
-        batch_ex=batch[-1]
+        batch_ex = batch[-1]
         batch = [torch.tensor(d).to("cuda") for d in batch[:-1]]
         batch_token_ids, batch_mask = batch
 
-        batch_spo=extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_ex,batch_token_ids, batch_mask)
-        for i,ex in enumerate(batch_ex):
+        batch_spo = extract_spoes(args, tokenizer, id2predicate, id2label, label2id, model, batch_ex, batch_token_ids, batch_mask)
+        for i, ex in enumerate(batch_ex):
             R = set(batch_spo[i])
             T = set([(item[0], item[1], item[2]) for item in ex['triple_list']])
             X += len(R & T)
             Y += len(R)
             Z += len(T)
+            for spo in R:
+                per_class[spo[1]]['pred'] += 1
+            for spo in T:
+                per_class[spo[1]]['gold'] += 1
+            for spo in R & T:
+                per_class[spo[1]]['tp'] += 1
             total += 1
             if R == T:
                 success += 1
@@ -369,6 +377,16 @@ def evaluate(args,tokenizer,id2predicate,id2label,label2id,model,dataloader,evl_
     pbar.close()
     f.close()
     f1, precision, recall = 2 * X / (Y + Z), X / Y, X / Z
+    if return_details:
+        detail_metrics = {}
+        for pid in sorted(id2predicate.keys(), key=lambda x: int(x)):
+            p = id2predicate[pid]
+            stats = per_class[p]
+            p_prec = stats['tp'] / stats['pred'] if stats['pred'] else 0.0
+            p_rec = stats['tp'] / stats['gold'] if stats['gold'] else 0.0
+            p_f1 = 2 * p_prec * p_rec / (p_prec + p_rec) if (p_prec + p_rec) else 0.0
+            detail_metrics[p] = {'precision': p_prec, 'recall': p_rec, 'f1': p_f1}
+        return f1, precision, recall, total, success, fail, detail_metrics
     return f1, precision, recall, total, success, fail
 
 
@@ -414,11 +432,16 @@ def test(args):
     test_dataloader=data_generator(args,test_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
 
     train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
-    f1, precision, recall, total, success, fail = evaluate(
-        args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader, test_pred_path
+    f1, precision, recall, total, success, fail, detail_metrics = evaluate(
+        args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader, test_pred_path, return_details=True
     )
     print(
         "f1:%f,precision:%f, recall:%f, total:%d, success:%d, fail:%d"
         % (f1, precision, recall, total, success, fail)
     )
     print("一共测试了%d个数据，成功%d，失败%d" % (total, success, fail))
+    print("各类别指标：")
+    for pid in sorted(id2predicate.keys(), key=lambda x: int(x)):
+        p = id2predicate[pid]
+        m = detail_metrics.get(p, {"precision": 0.0, "recall": 0.0, "f1": 0.0})
+        print(f"{p}\t准确率:{m['precision']:.4f}\t召回率:{m['recall']:.4f}\tF1:{m['f1']:.4f}")
