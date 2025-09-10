@@ -464,4 +464,7 @@ def test(args):
     print(
         f"Macro平均\t准确率:{macro_p:.4f}\t召回率:{macro_r:.4f}\tF1:{macro_f1:.4f}"
     )
+    print(
+        f"total\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
+    )
     print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
