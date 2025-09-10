@@ -433,15 +433,35 @@ def test(args):
 
     train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
     f1, precision, recall, total, success, fail, detail_metrics = evaluate(
-        args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader, test_pred_path, return_details=True
+        args,
+        tokenizer,
+        id2predicate,
+        id2label,
+        label2id,
+        train_model,
+        test_dataloader,
+        test_pred_path,
+        return_details=True,
     )
-    print(
-        "f1:%f,precision:%f, recall:%f, total:%d, success:%d, fail:%d"
-        % (f1, precision, recall, total, success, fail)
-    )
-    print("一共测试了%d个数据，成功%d，失败%d" % (total, success, fail))
+
+    # 计算宏平均
+    macro_p = sum(m["precision"] for m in detail_metrics.values()) / len(detail_metrics)
+    macro_r = sum(m["recall"] for m in detail_metrics.values()) / len(detail_metrics)
+    macro_f1 = sum(m["f1"] for m in detail_metrics.values()) / len(detail_metrics)
+
     print("各类别指标：")
     for pid in sorted(id2predicate.keys(), key=lambda x: int(x)):
         p = id2predicate[pid]
         m = detail_metrics.get(p, {"precision": 0.0, "recall": 0.0, "f1": 0.0})
-        print(f"{p}\t准确率:{m['precision']:.4f}\t召回率:{m['recall']:.4f}\tF1:{m['f1']:.4f}")
+        print(
+            f"{p}\t准确率:{m['precision']:.4f}\t召回率:{m['recall']:.4f}\tF1:{m['f1']:.4f}"
+        )
+
+    print("总体指标：")
+    print(
+        f"Micro平均\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
+    )
+    print(
+        f"Macro平均\t准确率:{macro_p:.4f}\t召回率:{macro_r:.4f}\tF1:{macro_f1:.4f}"
+    )
+    print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
