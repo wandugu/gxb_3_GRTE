@@ -261,7 +261,7 @@ def train(args):
     )
     train_result_path = os.path.join(result_dir, "train_result.json")
     print(
-        f"训练/验证集文件输出至{result_dir}目录下{os.path.basename(train_groundtruth_path)}"
+        f"训练集文件输出至{result_dir}目录下{os.path.basename(train_groundtruth_path)}"
     )
     print(
         f"模型预测文件输出至{result_dir}目录下{os.path.basename(train_result_path)}"
@@ -509,7 +509,7 @@ def test(args):
     )
     print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
     print(
-        f"训练/验证集文件输出至{result_dir}目录下{os.path.basename(test_groundtruth_path)}"
+        f"测试集文件输出至{result_dir}目录下{os.path.basename(test_groundtruth_path)}"
     )
     print(
         f"模型预测文件输出至{result_dir}目录下{os.path.basename(test_result_path)}"
