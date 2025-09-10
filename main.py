@@ -5,6 +5,7 @@ from util import *
 from tqdm import tqdm
 import random
 import os
+import shutil
 import torch.nn as nn
 import torch
 from transformers.modeling_bert import BertConfig
@@ -131,6 +132,10 @@ def train(args):
     test_pred_path=os.path.join(output_path,"test_pred.json")
     dev_pred_path=os.path.join(output_path,"dev_pred.json")
     log_path=os.path.join(output_path,"log.txt")
+    result_dir=os.path.join(os.getcwd(),"result")
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+    shutil.copy(train_path, os.path.join(result_dir, "train_groundtruth.json"))
 
     #label
     label_list=["N/A","SMH","SMT","SS","MMH","MMT","MSH","MST"]
@@ -169,6 +174,7 @@ def train(args):
 
     dev_dataloader=data_generator(args,valid_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
     test_dataloader=data_generator(args,test_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
+    train_eval_dataloader=data_generator(args,train_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
 
     t_total = len(dataloader) * args.num_train_epochs
 
@@ -240,6 +246,17 @@ def train(args):
     )
     with open(log_path, "a", encoding="utf-8") as f:
         print("test： f1:%f\tprecision:%f\trecall:%f" % (f1, precision, recall), file=f)
+    evaluate(
+        args,
+        tokenizer,
+        id2predicate,
+        id2label,
+        label2id,
+        train_model,
+        train_eval_dataloader,
+        os.path.join(output_path, "train_pred.json"),
+        result_path=os.path.join(result_dir, "train_result.json"),
+    )
 
 def extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_ex, batch_token_ids, batch_mask):
 
@@ -330,12 +347,13 @@ def extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_
     return batch_spo
 
 
-def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloader, evl_path, return_details=False):
+def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloader, evl_path, result_path=None, return_details=False):
 
     X, Y, Z = 1e-10, 1e-10, 1e-10
     total, success, fail = 0, 0, 0
     per_class = defaultdict(lambda: {'tp': 0, 'pred': 0, 'gold': 0})
     f = open(evl_path, 'w', encoding='utf-8')
+    results = []
     pbar = tqdm()
     for batch in dataloader:
 
@@ -374,8 +392,13 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
                 'lack': list(T - R),
             }, ensure_ascii=False, indent=4)
             f.write(s + '\n')
+            if result_path is not None:
+                results.append({'text': ex['text'], 'triple_list': list(R)})
     pbar.close()
     f.close()
+    if result_path is not None:
+        with open(result_path, 'w', encoding='utf-8') as rf:
+            json.dump(results, rf, ensure_ascii=False, indent=4)
     f1, precision, recall = 2 * X / (Y + Z), X / Y, X / Z
     if return_details:
         detail_metrics = {}
@@ -402,6 +425,10 @@ def test(args):
     test_path=os.path.join(args.base_path,args.dataset,"test.json")
     rel2id_path=os.path.join(args.base_path,args.dataset,"rel2id.json")
     test_pred_path = os.path.join(output_path, "test_pred.json")
+    result_dir=os.path.join(os.getcwd(),"result")
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+    shutil.copy(test_path, os.path.join(result_dir, "test_groundtruth.json"))
 
     #label
     label_list=["N/A","SMH","SMT","SS","MMH","MMT","MSH","MST"]
@@ -441,6 +468,7 @@ def test(args):
         train_model,
         test_dataloader,
         test_pred_path,
+        result_path=os.path.join(result_dir, "test_result.json"),
         return_details=True,
     )
 
