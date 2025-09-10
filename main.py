@@ -135,7 +135,9 @@ def train(args):
     result_dir=os.path.join(os.getcwd(),"result")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
-    shutil.copy(train_path, os.path.join(result_dir, "train_groundtruth.json"))
+    train_groundtruth_path = shutil.copy(
+        train_path, os.path.join(result_dir, "train_groundtruth.json")
+    )
 
     #label
     label_list=["N/A","SMH","SMT","SS","MMH","MMT","MSH","MST"]
@@ -256,6 +258,13 @@ def train(args):
         train_eval_dataloader,
         os.path.join(output_path, "train_pred.json"),
         result_path=os.path.join(result_dir, "train_result.json"),
+    )
+    train_result_path = os.path.join(result_dir, "train_result.json")
+    print(
+        f"训练/验证集文件输出至{result_dir}目录下{os.path.basename(train_groundtruth_path)}"
+    )
+    print(
+        f"模型预测文件输出至{result_dir}目录下{os.path.basename(train_result_path)}"
     )
 
 def extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_ex, batch_token_ids, batch_mask):
@@ -428,7 +437,9 @@ def test(args):
     result_dir=os.path.join(os.getcwd(),"result")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
-    shutil.copy(test_path, os.path.join(result_dir, "test_groundtruth.json"))
+    test_groundtruth_path = shutil.copy(
+        test_path, os.path.join(result_dir, "test_groundtruth.json")
+    )
 
     #label
     label_list=["N/A","SMH","SMT","SS","MMH","MMT","MSH","MST"]
@@ -459,6 +470,7 @@ def test(args):
     test_dataloader=data_generator(args,test_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
 
     train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
+    test_result_path = os.path.join(result_dir, "test_result.json")
     f1, precision, recall, total, success, fail, detail_metrics = evaluate(
         args,
         tokenizer,
@@ -468,7 +480,7 @@ def test(args):
         train_model,
         test_dataloader,
         test_pred_path,
-        result_path=os.path.join(result_dir, "test_result.json"),
+        result_path=test_result_path,
         return_details=True,
     )
 
@@ -496,3 +508,9 @@ def test(args):
         f"total\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
     )
     print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
+    print(
+        f"训练/验证集文件输出至{result_dir}目录下{os.path.basename(test_groundtruth_path)}"
+    )
+    print(
+        f"模型预测文件输出至{result_dir}目录下{os.path.basename(test_result_path)}"
+    )
