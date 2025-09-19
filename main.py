@@ -356,11 +356,43 @@ def extract_spoes(args, tokenizer, id2predicate,id2label,label2id, model, batch_
     return batch_spo
 
 
+def resolve_example_group(example):
+    """根据数据条目确定所属类别。
+
+    优先使用数据中提供的类别信息，如果缺失，则按照三元组数量进行划分。
+    """
+    candidate_keys = [
+        "file_type",
+        "data_type",
+        "category",
+        "type",
+        "source",
+        "file",
+        "file_name",
+        "document_type",
+        "doc_type",
+    ]
+    for key in candidate_keys:
+        value = example.get(key)
+        if value not in (None, ""):
+            if isinstance(value, (list, tuple)):
+                return "+".join(map(str, value))
+            return str(value)
+
+    triple_count = len(example.get("triple_list", []))
+    if triple_count <= 1:
+        return "单条三元组"
+    if triple_count == 2:
+        return "双条三元组"
+    return "多条三元组"
+
+
 def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloader, evl_path, result_path=None, return_details=False):
 
     X, Y, Z = 1e-10, 1e-10, 1e-10
     total, success, fail = 0, 0, 0
     per_class = defaultdict(lambda: {'tp': 0, 'pred': 0, 'gold': 0})
+    per_group = defaultdict(lambda: {'success': 0, 'total': 0})
     f = open(evl_path, 'w', encoding='utf-8')
     results = []
     pbar = tqdm()
@@ -384,8 +416,11 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
             for spo in R & T:
                 per_class[spo[1]]['tp'] += 1
             total += 1
+            group_name = resolve_example_group(ex)
+            per_group[group_name]['total'] += 1
             if R == T:
                 success += 1
+                per_group[group_name]['success'] += 1
             else:
                 fail += 1
             f1, precision, recall = 2 * X / (Y + Z), X / Y, X / Z
@@ -425,7 +460,14 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
                 'pred': stats['pred'],
                 'gold': stats['gold'],
             }
-        return f1, precision, recall, total, success, fail, detail_metrics
+        data_metrics = {
+            group: {
+                'success': stats['success'],
+                'total': stats['total'],
+            }
+            for group, stats in per_group.items()
+        }
+        return f1, precision, recall, total, success, fail, detail_metrics, data_metrics
     return f1, precision, recall, total, success, fail
 
 
@@ -478,7 +520,7 @@ def test(args):
 
     train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
     test_result_path = os.path.join(result_dir, "test_result.json")
-    f1, precision, recall, total, success, fail, detail_metrics = evaluate(
+    f1, precision, recall, total, success, fail, detail_metrics, data_metrics = evaluate(
         args,
         tokenizer,
         id2predicate,
@@ -529,6 +571,17 @@ def test(args):
         f"total\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
     )
     print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
+    data_items = sorted(data_metrics.items(), key=lambda item: item[0])
+    data_success_terms = [str(stats["success"]) for _, stats in data_items if stats["total"] > 0]
+    data_total_terms = [str(stats["total"]) for _, stats in data_items if stats["total"] > 0]
+    data_success_sum = sum(stats["success"] for _, stats in data_items)
+    data_total_sum = sum(stats["total"] for _, stats in data_items)
+    data_success_expr = "+".join(data_success_terms) if data_success_terms else "0"
+    data_total_expr = "+".join(data_total_terms) if data_total_terms else "0"
+    data_accuracy = data_success_sum / data_total_sum if data_total_sum else 0.0
+    print(
+        f"数据判断Accuracy = {{成功{{{data_success_expr}={data_success_sum}}}}}/{{总数{{{data_total_expr}={data_total_sum}}}}} = {data_accuracy:.4f}"
+    )
     valid_details = [
         (name, stats)
         for name, stats in per_class_details
