@@ -570,7 +570,7 @@ def test(args):
     print(
         f"total\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
     )
-    print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
+    # print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
     data_items = sorted(data_metrics.items(), key=lambda item: item[0])
     data_success_terms = [str(stats["success"]) for _, stats in data_items if stats["total"] > 0]
     data_total_terms = [str(stats["total"]) for _, stats in data_items if stats["total"] > 0]
@@ -579,9 +579,9 @@ def test(args):
     data_success_expr = "+".join(data_success_terms) if data_success_terms else "0"
     data_total_expr = "+".join(data_total_terms) if data_total_terms else "0"
     data_accuracy = data_success_sum / data_total_sum if data_total_sum else 0.0
-    print(
-        f"数据判断Accuracy = {{成功{{{data_success_expr}={data_success_sum}}}}}/{{总数{{{data_total_expr}={data_total_sum}}}}} = {data_accuracy:.4f}"
-    )
+    # print(
+    #     f"数据判断Accuracy = {{成功{{{data_success_expr}={data_success_sum}}}}}/{{总数{{{data_total_expr}={data_total_sum}}}}} = {data_accuracy:.4f}"
+    # )
     valid_details = [
         (name, stats)
         for name, stats in per_class_details
