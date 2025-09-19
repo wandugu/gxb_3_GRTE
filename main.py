@@ -417,7 +417,14 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
             p_prec = stats['tp'] / stats['pred'] if stats['pred'] else 0.0
             p_rec = stats['tp'] / stats['gold'] if stats['gold'] else 0.0
             p_f1 = 2 * p_prec * p_rec / (p_prec + p_rec) if (p_prec + p_rec) else 0.0
-            detail_metrics[p] = {'precision': p_prec, 'recall': p_rec, 'f1': p_f1}
+            detail_metrics[p] = {
+                'precision': p_prec,
+                'recall': p_rec,
+                'f1': p_f1,
+                'tp': stats['tp'],
+                'pred': stats['pred'],
+                'gold': stats['gold'],
+            }
         return f1, precision, recall, total, success, fail, detail_metrics
     return f1, precision, recall, total, success, fail
 
@@ -490,11 +497,25 @@ def test(args):
     macro_f1 = sum(m["f1"] for m in detail_metrics.values()) / len(detail_metrics)
 
     print("各类别指标：")
+    per_class_details = []
+    default_detail = {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "pred": 0,
+        "gold": 0,
+        "tp": 0,
+    }
     for pid in sorted(id2predicate.keys(), key=lambda x: int(x)):
         p = id2predicate[pid]
-        m = detail_metrics.get(p, {"precision": 0.0, "recall": 0.0, "f1": 0.0})
+        m = detail_metrics.get(p, default_detail)
+        # 避免多处引用同一个默认字典
+        if m is default_detail:
+            m = default_detail.copy()
+        per_class_details.append((p, m))
         print(
             f"{p}\t准确率:{m['precision']:.4f}\t召回率:{m['recall']:.4f}\tF1:{m['f1']:.4f}"
+            f"\t预测数量:{m['pred']}\t真实数量:{m['gold']}\t正确数量:{m['tp']}"
         )
 
     print("总体指标：")
@@ -508,6 +529,26 @@ def test(args):
         f"total\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
     )
     print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
+    valid_details = [
+        (name, stats)
+        for name, stats in per_class_details
+        if stats["gold"] or stats["tp"] or stats["pred"]
+    ]
+    if not valid_details:
+        if per_class_details:
+            valid_details = per_class_details
+        else:
+            valid_details = [("N/A", default_detail)]
+    success_terms = [str(stats["tp"]) for _, stats in valid_details]
+    total_terms = [str(stats["gold"]) for _, stats in valid_details]
+    success_sum = sum(stats["tp"] for _, stats in valid_details)
+    total_sum = sum(stats["gold"] for _, stats in valid_details)
+    success_expr = "+".join(success_terms) if success_terms else "0"
+    total_expr = "+".join(total_terms) if total_terms else "0"
+    accuracy = success_sum / total_sum if total_sum else 0.0
+    print(
+        f"实体判断Accuracy = {{成功{{{success_expr}={success_sum}}}}}/{{总数{{{total_expr}={total_sum}}}}} = {accuracy:.4f}"
+    )
     print(
         f"测试集文件输出至{result_dir}目录下{os.path.basename(test_groundtruth_path)}"
     )
