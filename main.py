@@ -556,19 +556,19 @@ def test(args):
             m = default_detail.copy()
         per_class_details.append((p, m))
         print(
-            f"{p}\t准确率:{m['precision']:.4f}\t召回率:{m['recall']:.4f}\tF1:{m['f1']:.4f}"
+            f"{p}\t精确率:{m['precision']:.4f}\t召回率:{m['recall']:.4f}\tF1:{m['f1']:.4f}"
             f"\t预测数量:{m['pred']}\t真实数量:{m['gold']}\t正确数量:{m['tp']}"
         )
 
     print("总体指标：")
     print(
-        f"Micro平均\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
+        f"Micro平均\t精确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
     )
     print(
-        f"Macro平均\t准确率:{macro_p:.4f}\t召回率:{macro_r:.4f}\tF1:{macro_f1:.4f}"
+        f"Macro平均\t精确率:{macro_p:.4f}\t召回率:{macro_r:.4f}\tF1:{macro_f1:.4f}"
     )
     print(
-        f"total\t准确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
+        f"total\t精确率:{precision:.4f}\t召回率:{recall:.4f}\tF1:{f1:.4f}"
     )
     # print(f"一共测试了{total}个数据，成功{success}，失败{fail}")
     data_items = sorted(data_metrics.items(), key=lambda item: item[0])
