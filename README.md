@@ -3,10 +3,11 @@
 
 ## Requirements
 The main requirements are:
-- python 3.6
-- torch 1.7.0 
+- python 3.10
+- torch 2.1.2+cu118 (GPU)
+- tensorflow 2.13.* (GPU)
 - tqdm
-- transformers 3.5.1
+- transformers 4.38+
 - bert4keras
 
 ## Usage
@@ -20,6 +21,11 @@ python run.py --dataset=WebNLG_star   --train=train  --rounds=2
 python run.py --dataset=NYT24   --train=train  --rounds=3
 python run.py --dataset=NYT24_star   --train=train  --rounds=2
 python run.py --dataset=NYT29   --train=train  --rounds=3
+```
+
+* **Smoke test**
+```
+python run.py --smoke_test
 ```
 
 * **Evaluate on the test set**

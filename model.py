@@ -1,8 +1,13 @@
-from transformers.modeling_bert import BertModel,BertPreTrainedModel
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from transformers.modeling_bert import BertIntermediate, BertOutput, BertAttention, BertSelfAttention
+from transformers import BertModel, BertPreTrainedModel
+from transformers.models.bert.modeling_bert import (
+    BertAttention,
+    BertIntermediate,
+    BertOutput,
+    BertSelfAttention,
+)
 
 class DecoderLayer(nn.Module):
     def __init__(self, config):
