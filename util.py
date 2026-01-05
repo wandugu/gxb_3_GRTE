@@ -1,22 +1,110 @@
 #! -*- coding:utf-8 -*-
-import numpy as np
-import random
-from copy import deepcopy
+import logging
 import os
 import pickle
+import random
+from copy import deepcopy
+from pathlib import Path
+
+import numpy as np
 import torch
+import yaml
+
+DEFAULT_LABEL_LIST = ["N/A", "SMH", "SMT", "SS", "MMH", "MMT", "MSH", "MST"]
+
+
+def load_config(config_path):
+    config_path = config_path or "config.yaml"
+    if not os.path.exists(config_path):
+        return {}
+    with open(config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def setup_logger(config=None):
+    config = config or {}
+    log_config = config.get("logging", {})
+    level_name = log_config.get("level", "DEBUG")
+    level = getattr(logging, level_name.upper(), logging.DEBUG)
+    logger = logging.getLogger("grte")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    logger.setLevel(level)
+    return logger
 
 def print_config(args):
-    config_path=os.path.join(args.base_path, args.dataset, "output", "config.txt")
-    with open(config_path,"w",encoding="utf-8") as f:
-        for k,v in sorted(vars(args).items()):
-            print(k,'=',v,file=f)
+    config_path = os.path.join(args.base_path, args.dataset, "output", "config.txt")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
+        for k, v in sorted(vars(args).items()):
+            print(k, "=", v, file=f)
 
-def set_seed():
 
-    random.seed(0)
-    np.random.seed(0)
-    torch.manual_seed(0)
+def set_seed(seed=0):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def get_label_list(config):
+    config = config or {}
+    return config.get("label_list") or DEFAULT_LABEL_LIST
+
+
+def build_label_maps(label_list):
+    id2label, label2id = {}, {}
+    for i, l in enumerate(label_list):
+        id2label[str(i)] = l
+        label2id[l] = i
+    return id2label, label2id
+
+
+class SimpleTokenizer:
+    def __init__(self, vocab=None):
+        self.vocab = vocab or {"[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3}
+        self.id2token = {v: k for k, v in self.vocab.items()}
+
+    def _add_token(self, token):
+        if token not in self.vocab:
+            self.vocab[token] = len(self.vocab)
+            self.id2token[self.vocab[token]] = token
+        return self.vocab[token]
+
+    def encode(self, text, maxlen=None):
+        tokens = ["[CLS]"] + list(text) + ["[SEP]"]
+        token_ids = [self._add_token(token) for token in tokens]
+        if maxlen is not None:
+            token_ids = token_ids[:maxlen]
+            tokens = tokens[:maxlen]
+        mask = [1] * len(token_ids)
+        return token_ids, mask
+
+    def tokenize(self, text, maxlen=None):
+        tokens = ["[CLS]"] + list(text) + ["[SEP]"]
+        if maxlen is not None:
+            tokens = tokens[:maxlen]
+        return tokens
+
+    def rematch(self, text, tokens):
+        mapping = []
+        text_index = 0
+        for token in tokens:
+            if token in ("[CLS]", "[SEP]"):
+                mapping.append([])
+                continue
+            if text_index < len(text):
+                mapping.append([text_index])
+                text_index += 1
+            else:
+                mapping.append([])
+        return mapping
 
 def is_number(s):
     try:

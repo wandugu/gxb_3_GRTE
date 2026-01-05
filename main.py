@@ -1,16 +1,29 @@
-from transformers import AdamW, get_linear_schedule_with_warmup
-from bert4keras.tokenizers import Tokenizer
-from model import GRTE
-from util import *
-from tqdm import tqdm
-import random
-import os
-import shutil
-import torch.nn as nn
-import torch
-from transformers.modeling_bert import BertConfig
 import json
+import os
+import random
+import shutil
 from collections import defaultdict
+
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.optim import AdamW
+from tqdm import tqdm
+from transformers import BertConfig, get_linear_schedule_with_warmup
+
+from model import GRTE
+from util import (
+    SimpleTokenizer,
+    build_label_maps,
+    get_label_list,
+    load_config,
+    print_config,
+    set_seed,
+    setup_logger,
+    mat_padding,
+    sequence_padding,
+    DataGenerator,
+)
 
 def search(pattern, sequence):
     n = len(pattern)
@@ -119,47 +132,51 @@ class data_generator(DataGenerator):
                     batch_ex = []
 
 def train(args):
-    set_seed()
+    from bert4keras.tokenizers import Tokenizer
+
+    app_config = load_config(args.config)
+    logger = setup_logger(app_config)
+    logger.debug("开始训练，使用配置文件：%s", args.config)
+    set_seed(args.seed)
     try:
         torch.cuda.set_device(int(args.cuda_id))
-    except:
-        os.environ["CUDA_VISIBLE_DEVICES"] =args.cuda_id
-    output_path=os.path.join(args.output_path, args.dataset)
-    train_path=os.path.join(args.base_path,args.dataset,"train.json")
-    dev_path=os.path.join(args.base_path,args.dataset,"dev.json")
-    test_path=os.path.join(args.base_path,args.dataset,"test.json")
-    rel2id_path=os.path.join(args.base_path,args.dataset,"rel2id.json")
-    test_pred_path=os.path.join(output_path,"test_pred.json")
-    dev_pred_path=os.path.join(output_path,"dev_pred.json")
-    log_path=os.path.join(output_path,"log.txt")
-    result_dir=os.path.join(os.getcwd(),"result")
+        logger.debug("设置CUDA设备：%s", args.cuda_id)
+    except Exception as exc:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_id
+        logger.debug("使用CUDA_VISIBLE_DEVICES=%s，异常信息：%s", args.cuda_id, exc)
+    output_path = os.path.join(args.output_path, args.dataset)
+    train_path = os.path.join(args.base_path, args.dataset, "train.json")
+    dev_path = os.path.join(args.base_path, args.dataset, "dev.json")
+    test_path = os.path.join(args.base_path, args.dataset, "test.json")
+    rel2id_path = os.path.join(args.base_path, args.dataset, "rel2id.json")
+    test_pred_path = os.path.join(output_path, "test_pred.json")
+    dev_pred_path = os.path.join(output_path, "dev_pred.json")
+    log_path = os.path.join(output_path, "log.txt")
+    result_dir = os.path.join(os.getcwd(), "result")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     train_groundtruth_path = shutil.copy(
         train_path, os.path.join(result_dir, "train_groundtruth.json")
     )
 
-    #label
-    label_list=["N/A","SMH","SMT","SS","MMH","MMT","MSH","MST"]
-
-    id2label,label2id={},{}
-    for i,l in enumerate(label_list):
-        id2label[str(i)]=l
-        label2id[l]=i
+    label_list = get_label_list(app_config)
+    id2label, label2id = build_label_maps(label_list)
 
     train_data = json.load(open(train_path))
     valid_data = json.load(open(dev_path))
     test_data = json.load(open(test_path))
     id2predicate, predicate2id = json.load(open(rel2id_path))
+    logger.debug("数据加载完成：train=%d, dev=%d, test=%d", len(train_data), len(valid_data), len(test_data))
 
     tokenizer = Tokenizer(args.bert_vocab_path)
     config = BertConfig.from_pretrained(args.bert_config_path)
-    config.num_p=len(id2predicate)
-    config.num_label=len(label_list)
-    config.rounds=args.rounds
-    config.fix_bert_embeddings=args.fix_bert_embeddings
+    config.num_p = len(id2predicate)
+    config.num_label = len(label_list)
+    config.rounds = args.rounds
+    config.fix_bert_embeddings = args.fix_bert_embeddings
+    logger.debug("模型配置：num_p=%d, num_label=%d, rounds=%d", config.num_p, config.num_label, config.rounds)
 
-    train_model = GRTE.from_pretrained(pretrained_model_name_or_path=args.bert_model_path,config=config)
+    train_model = GRTE.from_pretrained(pretrained_model_name_or_path=args.bert_model_path, config=config)
     train_model.to("cuda")
 
     if getattr(args, "load_model", False):
@@ -171,14 +188,51 @@ def train(args):
         os.makedirs(output_path)
 
     print_config(args)
+    logger.debug("输出路径：%s", output_path)
 
-    dataloader = data_generator(args,train_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.batch_size,random=True)
+    dataloader = data_generator(
+        args,
+        train_data,
+        tokenizer,
+        [predicate2id, id2predicate],
+        [label2id, id2label],
+        args.batch_size,
+        random=True,
+    )
 
-    dev_dataloader=data_generator(args,valid_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
-    test_dataloader=data_generator(args,test_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
-    train_eval_dataloader=data_generator(args,train_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
+    dev_dataloader = data_generator(
+        args,
+        valid_data,
+        tokenizer,
+        [predicate2id, id2predicate],
+        [label2id, id2label],
+        args.test_batch_size,
+        random=False,
+        is_train=False,
+    )
+    test_dataloader = data_generator(
+        args,
+        test_data,
+        tokenizer,
+        [predicate2id, id2predicate],
+        [label2id, id2label],
+        args.test_batch_size,
+        random=False,
+        is_train=False,
+    )
+    train_eval_dataloader = data_generator(
+        args,
+        train_data,
+        tokenizer,
+        [predicate2id, id2predicate],
+        [label2id, id2label],
+        args.test_batch_size,
+        random=False,
+        is_train=False,
+    )
 
     t_total = len(dataloader) * args.num_train_epochs
+    logger.debug("训练步数t_total=%d", t_total)
 
     no_decay = ["bias", "LayerNorm.weight"]
 
@@ -198,11 +252,12 @@ def train(args):
 
     best_f1 = -1.0
     step = 0
-    crossentropy=nn.CrossEntropyLoss(reduction="none")
+    crossentropy = nn.CrossEntropyLoss(reduction="none")
 
     for epoch in range(args.num_train_epochs):
         train_model.train()
         epoch_loss = 0
+        logger.debug("开始第%d轮训练", epoch + 1)
         with tqdm(total=dataloader.__len__(), desc="train", ncols=80) as t:
             for i, batch in enumerate(dataloader):
                 batch = [torch.tensor(d).to("cuda") for d in batch[:-1]]
@@ -228,13 +283,25 @@ def train(args):
         f1, precision, recall, _, _, _ = evaluate(
             args, tokenizer, id2predicate, id2label, label2id, train_model, test_dataloader, test_pred_path
         )
+        logger.debug(
+            "第%d轮评估结果：f1=%.4f precision=%.4f recall=%.4f",
+            epoch + 1,
+            f1,
+            precision,
+            recall,
+        )
 
         if (epoch + 1) % args.save_interval == 0:
-            torch.save(train_model.state_dict(), os.path.join(output_path, f"model_epoch_{epoch+1}.bin"))
+            torch.save(
+                train_model.state_dict(),
+                os.path.join(output_path, f"model_epoch_{epoch+1}.bin"),
+            )
+            logger.debug("已保存模型：epoch=%d", epoch + 1)
 
         if f1 > best_f1:
             best_f1 = f1
             torch.save(train_model.state_dict(), os.path.join(output_path, "best_model.bin"))
+            logger.debug("更新最佳模型：best_f1=%.4f", best_f1)
 
         epoch_loss = epoch_loss / dataloader.__len__()
         with open(log_path, "a", encoding="utf-8") as f:
@@ -388,6 +455,8 @@ def resolve_example_group(example):
 
 
 def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloader, evl_path, result_path=None, return_details=False):
+    logger = setup_logger(load_config(args.config))
+    logger.debug("开始评估，输出文件：%s", evl_path)
 
     X, Y, Z = 1e-10, 1e-10, 1e-10
     total, success, fail = 0, 0, 0
@@ -472,43 +541,46 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
 
 
 def test(args):
+    from bert4keras.tokenizers import Tokenizer
+
+    app_config = load_config(args.config)
+    logger = setup_logger(app_config)
+    logger.debug("开始测试，使用配置文件：%s", args.config)
     try:
         torch.cuda.set_device(int(args.cuda_id))
-    except:
-        os.environ["CUDA_VISIBLE_DEVICES"] =args.cuda_id
+        logger.debug("设置CUDA设备：%s", args.cuda_id)
+    except Exception as exc:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_id
+        logger.debug("使用CUDA_VISIBLE_DEVICES=%s，异常信息：%s", args.cuda_id, exc)
 
-    output_path=os.path.join(args.output_path, args.dataset)
+    output_path = os.path.join(args.output_path, args.dataset)
 
-    dev_path=os.path.join(args.base_path,args.dataset,"dev.json")
-    test_path=os.path.join(args.base_path,args.dataset,"test.json")
-    rel2id_path=os.path.join(args.base_path,args.dataset,"rel2id.json")
+    dev_path = os.path.join(args.base_path, args.dataset, "dev.json")
+    test_path = os.path.join(args.base_path, args.dataset, "test.json")
+    rel2id_path = os.path.join(args.base_path, args.dataset, "rel2id.json")
     test_pred_path = os.path.join(output_path, "test_pred.json")
-    result_dir=os.path.join(os.getcwd(),"result")
+    result_dir = os.path.join(os.getcwd(), "result")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     test_groundtruth_path = shutil.copy(
         test_path, os.path.join(result_dir, "test_groundtruth.json")
     )
 
-    #label
-    label_list=["N/A","SMH","SMT","SS","MMH","MMT","MSH","MST"]
-
-    id2label,label2id={},{}
-    for i,l in enumerate(label_list):
-        id2label[str(i)]=l
-        label2id[l]=i
+    label_list = get_label_list(app_config)
+    id2label, label2id = build_label_maps(label_list)
 
     test_data = json.load(open(test_path))
     id2predicate, predicate2id = json.load(open(rel2id_path))
+    logger.debug("测试数据加载完成：test=%d", len(test_data))
 
     tokenizer = Tokenizer(args.bert_vocab_path)
     config = BertConfig.from_pretrained(args.bert_config_path)
-    config.num_p=len(id2predicate)
-    config.num_label=len(label_list)
-    config.rounds=args.rounds
-    config.fix_bert_embeddings=args.fix_bert_embeddings
+    config.num_p = len(id2predicate)
+    config.num_label = len(label_list)
+    config.rounds = args.rounds
+    config.fix_bert_embeddings = args.fix_bert_embeddings
 
-    train_model = GRTE.from_pretrained(pretrained_model_name_or_path=args.bert_model_path,config=config)
+    train_model = GRTE.from_pretrained(pretrained_model_name_or_path=args.bert_model_path, config=config)
     train_model.to("cuda")
 
     if not os.path.exists(output_path):
@@ -516,7 +588,16 @@ def test(args):
 
     print_config(args)
 
-    test_dataloader=data_generator(args,test_data, tokenizer,[predicate2id,id2predicate],[label2id,id2label],args.test_batch_size,random=False,is_train=False)
+    test_dataloader = data_generator(
+        args,
+        test_data,
+        tokenizer,
+        [predicate2id, id2predicate],
+        [label2id, id2label],
+        args.test_batch_size,
+        random=False,
+        is_train=False,
+    )
 
     train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
     test_result_path = os.path.join(result_dir, "test_result.json")
@@ -608,3 +689,62 @@ def test(args):
     print(
         f"模型预测文件输出至{result_dir}目录下{os.path.basename(test_result_path)}"
     )
+
+
+def smoke_test(args):
+    app_config = load_config(args.config)
+    logger = setup_logger(app_config)
+    logger.debug("开始烟测")
+    set_seed(args.seed)
+
+    label_list = get_label_list(app_config)
+    id2label, label2id = build_label_maps(label_list)
+    predicate2id = {"喜欢": 0}
+    id2predicate = {"0": "喜欢"}
+
+    sample = {
+        "text": "张三喜欢李四",
+        "triple_list": [("张三", "喜欢", "李四")],
+    }
+    tokenizer = SimpleTokenizer()
+
+    args.max_len = max(args.max_len, 16)
+    args.batch_size = 1
+    args.test_batch_size = 1
+
+    config = BertConfig(
+        vocab_size=len(tokenizer.vocab),
+        hidden_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        intermediate_size=64,
+    )
+    config.num_p = len(id2predicate)
+    config.num_label = len(label_list)
+    config.rounds = 1
+    config.fix_bert_embeddings = False
+    logger.debug(
+        "烟测配置：vocab_size=%d num_p=%d num_label=%d",
+        config.vocab_size,
+        config.num_p,
+        config.num_label,
+    )
+
+    model = GRTE(config)
+    model.eval()
+
+    dataloader = data_generator(
+        args,
+        [sample],
+        tokenizer,
+        [predicate2id, id2predicate],
+        [label2id, id2label],
+        args.batch_size,
+        random=False,
+    )
+    batch = next(iter(dataloader))
+    batch_token_ids, batch_mask = [torch.tensor(d) for d in batch[:2]]
+
+    with torch.no_grad():
+        output = model(batch_token_ids, batch_mask)
+    logger.debug("烟测完成，输出shape=%s", tuple(output.shape))
