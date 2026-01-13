@@ -2,7 +2,7 @@
 
 usage() {
   cat <<USAGE
-Usage: $0 -d DATASET [-r ROUNDS] [-e EPOCHS] [-g GPU_ID] [-o OUTPUT_PATH] [-m MODE] [-p RATIO]
+Usage: $0 -d DATASET [-r ROUNDS] [-e EPOCHS] [-g GPU_ID] [-o OUTPUT_PATH] [-m MODE] [-p RATIO] [-c CONFIG]
 
 Available DATASET options (default rounds):
   WebNLG       (rounds=4)
@@ -11,12 +11,15 @@ Available DATASET options (default rounds):
   NYT24_star   (rounds=2)
   NYT29        (rounds=3)
 
-MODE options:
-  train (default, 评估使用模型预测)
+MODE options (default from config.yaml):
+  train (评估使用模型预测)
   test  (按比例混合ground truth与模型预测)
 
 RATIO:
-  ground truth比例，仅在MODE=test生效 (default=0.85)
+  ground truth比例，仅在MODE=test生效 (default from config.yaml)
+
+CONFIG:
+  配置文件路径 (default=config.yaml)
 USAGE
 }
 
@@ -26,14 +29,15 @@ USAGE
  epochs=50
  gpu_id=0
  output_path=./ckpt
- eval_mode="train"
- test_groundtruth_ratio=0.85
+ config_path="config.yaml"
+ eval_mode=""
+ test_groundtruth_ratio=""
 
 # flags to track if dataset/rounds provided
  dataset_cli=0
  rounds_cli=0
 
-while getopts "d:r:e:g:o:m:p:h" opt; do
+while getopts "d:r:e:g:o:m:p:c:h" opt; do
     case ${opt} in
       d) dataset=${OPTARG}; dataset_cli=1 ;;
       r) rounds=${OPTARG}; rounds_cli=1 ;;
@@ -42,6 +46,7 @@ while getopts "d:r:e:g:o:m:p:h" opt; do
       o) output_path=${OPTARG} ;;
       m) eval_mode=${OPTARG} ;;
       p) test_groundtruth_ratio=${OPTARG} ;;
+      c) config_path=${OPTARG} ;;
       h) usage; exit 0 ;;
       *) usage; exit 1 ;;
     esac
@@ -64,10 +69,55 @@ else
   esac
 fi
 
-case ${eval_mode} in
-  train|test) ;;
-  *) echo "Unknown mode: ${eval_mode}" >&2; usage; exit 1 ;;
-esac
+config_eval_mode="$(CONFIG_PATH="${config_path}" python - <<'PY'
+import os
+import yaml
+
+config_path = os.environ.get("CONFIG_PATH", "config.yaml")
+if not os.path.exists(config_path):
+    print("")
+    raise SystemExit
+
+with open(config_path, "r", encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+
+defaults = config.get("defaults", {})
+value = defaults.get("eval_mode", "")
+print(value)
+PY
+)"
+config_test_ratio="$(CONFIG_PATH="${config_path}" python - <<'PY'
+import os
+import yaml
+
+config_path = os.environ.get("CONFIG_PATH", "config.yaml")
+if not os.path.exists(config_path):
+    print("")
+    raise SystemExit
+
+with open(config_path, "r", encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+
+defaults = config.get("defaults", {})
+value = defaults.get("test_groundtruth_ratio", "")
+print(value)
+PY
+)"
+
+if [ -z "${eval_mode}" ]; then
+  eval_mode="${config_eval_mode}"
+fi
+
+if [ -z "${test_groundtruth_ratio}" ]; then
+  test_groundtruth_ratio="${config_test_ratio}"
+fi
+
+if [ -n "${eval_mode}" ]; then
+  case ${eval_mode} in
+    train|test) ;;
+    *) echo "Unknown mode: ${eval_mode}" >&2; usage; exit 1 ;;
+  esac
+fi
 
 ckpt_dir="${output_path}/${dataset}"
 if [ ! -f "${ckpt_dir}/best_model.bin" ]; then
@@ -75,12 +125,13 @@ if [ ! -f "${ckpt_dir}/best_model.bin" ]; then
   exit 1
 fi
 
- CUDA_VISIBLE_DEVICES=${gpu_id} python -u run.py \
+ CONFIG_PATH="${config_path}" CUDA_VISIBLE_DEVICES=${gpu_id} python -u run.py \
+   --config="${config_path}" \
    --cuda_id=${gpu_id} \
    --dataset=${dataset} \
    --train=test \
    --rounds=${rounds} \
    --num_train_epochs=${epochs} \
    --output_path="${output_path}" \
-   --eval_mode="${eval_mode}" \
-   --test_groundtruth_ratio="${test_groundtruth_ratio}"
+   ${eval_mode:+--eval_mode="${eval_mode}"} \
+   ${test_groundtruth_ratio:+--test_groundtruth_ratio="${test_groundtruth_ratio}"}
