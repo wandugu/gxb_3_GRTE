@@ -33,6 +33,12 @@ parser.add_argument("--base_path", default=defaults.get("base_path", "./dataset"
 parser.add_argument("--output_path", default=defaults.get("output_path", "./ckpt"), type=str)
 parser.add_argument("--save_interval", default=defaults.get("save_interval", 1), type=int)
 parser.add_argument("--seed", default=defaults.get("seed", 0), type=int)
+parser.add_argument("--eval_mode", default=defaults.get("eval_mode", "train"), type=str)
+parser.add_argument(
+    "--test_groundtruth_ratio",
+    default=defaults.get("test_groundtruth_ratio", 0.85),
+    type=float,
+)
 parser.add_argument("--load_model", action="store_true")
 parser.add_argument("--smoke_test", action="store_true")
 
