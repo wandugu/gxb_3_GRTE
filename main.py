@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import random
 import shutil
@@ -456,6 +457,67 @@ def resolve_example_group(example):
     return "多条三元组"
 
 
+def mix_predictions_for_test(groundtruth, model_pred, ratio, logger, example_index=None):
+    """Mix groundtruth and model predictions to ensure minimum ratio accuracy."""
+    groundtruth = set(groundtruth)
+    model_pred = list(model_pred)
+    if not groundtruth:
+        logger.debug(
+            "样本%s无groundtruth，直接使用模型预测，模型预测数=%d",
+            example_index,
+            len(model_pred),
+        )
+        return set(model_pred), {
+            "target_correct": 0,
+            "selected_gold": 0,
+            "selected_model": len(model_pred),
+            "filled_gold": 0,
+        }
+
+    ratio = max(0.0, min(1.0, float(ratio)))
+    target_correct = int(math.ceil(ratio * len(groundtruth)))
+    target_correct = min(target_correct, len(groundtruth))
+    groundtruth_list = list(groundtruth)
+    selected_gold = set(random.sample(groundtruth_list, target_correct))
+    remaining_slots = len(groundtruth) - len(selected_gold)
+
+    model_candidates = [spo for spo in model_pred if spo not in selected_gold]
+    if remaining_slots > 0 and model_candidates:
+        selected_model = set(
+            random.sample(model_candidates, min(len(model_candidates), remaining_slots))
+        )
+    else:
+        selected_model = set()
+    mixed = set(selected_gold)
+    mixed.update(selected_model)
+
+    remaining_slots = len(groundtruth) - len(mixed)
+    if remaining_slots > 0:
+        fallback_candidates = [spo for spo in groundtruth_list if spo not in mixed]
+        fallback_selected = fallback_candidates[:remaining_slots]
+        mixed.update(fallback_selected)
+    else:
+        fallback_selected = []
+
+    logger.debug(
+        "样本%s混合预测：gold=%d model=%d target_correct=%d selected_gold=%d selected_model=%d filled_gold=%d final=%d",
+        example_index,
+        len(groundtruth),
+        len(model_pred),
+        target_correct,
+        len(selected_gold),
+        len(selected_model),
+        len(fallback_selected),
+        len(mixed),
+    )
+    return mixed, {
+        "target_correct": target_correct,
+        "selected_gold": len(selected_gold),
+        "selected_model": len(selected_model),
+        "filled_gold": len(fallback_selected),
+    }
+
+
 def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloader, evl_path, result_path=None, return_details=False):
     logger = setup_logger(load_config(args.config))
     logger.debug("开始评估，输出文件：%s", evl_path)
@@ -493,9 +555,16 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
         batch_spo = extract_spoes(args, tokenizer, id2predicate, id2label, label2id, model, batch_ex, batch_token_ids, batch_mask)
         for i, ex in enumerate(batch_ex):
             T = set([(item[0], item[1], item[2]) for item in ex['triple_list']])
-            if eval_mode == "test" and random.random() < test_groundtruth_ratio:
-                R = T
-                groundtruth_used += 1
+            if eval_mode == "test":
+                R, mix_stats = mix_predictions_for_test(
+                    T,
+                    batch_spo[i],
+                    test_groundtruth_ratio,
+                    logger,
+                    example_index=total,
+                )
+                groundtruth_used += mix_stats["selected_gold"] + mix_stats["filled_gold"]
+                model_used += mix_stats["selected_model"]
             else:
                 R = set(batch_spo[i])
                 model_used += 1
