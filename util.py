@@ -1,6 +1,5 @@
 #! -*- coding:utf-8 -*-
 import logging
-import math
 import os
 import pickle
 import random
@@ -55,49 +54,42 @@ def set_seed(seed=0):
 
 
 def mix_prediction_sets(gold_set, pred_set, ratio, rng=None, logger=None):
-    """混合预测结果，保证按照比例选取ground truth。"""
+    """混合预测结果，按样本比例选择ground truth或模型预测。"""
     rng = rng or random
     ratio = max(0.0, min(1.0, float(ratio)))
     gold_list = list(gold_set)
     pred_list = list(pred_set)
     total_gold = len(gold_list)
-    if total_gold == 0:
+    total_pred = len(pred_list)
+    roll = rng.random()
+    use_groundtruth = roll < ratio
+
+    if use_groundtruth and total_gold == 0:
         if logger:
-            logger.debug("混合预测: gold为空，直接使用模型预测=%d", len(pred_list))
-        return set(pred_list), 0, len(pred_list)
-
-    desired_gt = int(math.ceil(total_gold * ratio))
-    desired_gt = min(desired_gt, total_gold)
-    selected_gt = set(rng.sample(gold_list, desired_gt)) if desired_gt else set()
-
-    desired_pred = max(total_gold - desired_gt, 0)
-    remaining_pred = [p for p in pred_list if p not in selected_gt]
-    if desired_pred and remaining_pred:
-        selected_pred = set(
-            rng.sample(remaining_pred, min(desired_pred, len(remaining_pred)))
-        )
-    else:
-        selected_pred = set()
-
-    if len(selected_pred) < desired_pred:
-        extra_needed = desired_pred - len(selected_pred)
-        remaining_gt = [g for g in gold_list if g not in selected_gt]
-        if extra_needed and remaining_gt:
-            selected_gt.update(
-                rng.sample(remaining_gt, min(extra_needed, len(remaining_gt)))
+            logger.debug(
+                "混合预测: gold为空，无法使用ground truth，回退模型预测=%d",
+                total_pred,
             )
+        use_groundtruth = False
 
-    mixed = selected_gt | selected_pred
+    if use_groundtruth:
+        mixed = set(gold_list)
+        gt_used, model_used = 1, 0
+    else:
+        mixed = set(pred_list)
+        gt_used, model_used = 0, 1
+
     if logger:
         logger.debug(
-            "混合预测: gold=%d pred=%d selected_gold=%d selected_pred=%d ratio=%.4f",
-            total_gold,
-            len(pred_list),
-            len(selected_gt),
-            len(selected_pred),
+            "混合预测: ratio=%.4f roll=%.4f use=%s gold=%d pred=%d mixed=%d",
             ratio,
+            roll,
+            "groundtruth" if use_groundtruth else "model",
+            total_gold,
+            total_pred,
+            len(mixed),
         )
-    return mixed, len(selected_gt), len(selected_pred)
+    return mixed, gt_used, model_used
 
 
 def get_label_list(config):

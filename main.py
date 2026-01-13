@@ -483,6 +483,7 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     groundtruth_used = 0
     model_used = 0
     mixed_samples = 0
+    mixed_pred_total = 0
     f = open(evl_path, 'w', encoding='utf-8')
     results = []
     pbar = tqdm()
@@ -509,6 +510,7 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
             else:
                 R = set(batch_spo[i])
                 model_used += 1
+            mixed_pred_total += len(R)
             X += len(R & T)
             Y += len(R)
             Z += len(T)
@@ -549,7 +551,7 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     if eval_mode == "test":
         total_used = groundtruth_used + model_used
         ratio_used = groundtruth_used / total_used if total_used else 0.0
-        avg_pred = total_used / mixed_samples if mixed_samples else 0.0
+        avg_pred = mixed_pred_total / mixed_samples if mixed_samples else 0.0
         logger.debug(
             "混合评估完成：groundtruth=%d model=%d 实际比例=%.4f 平均每条预测=%.2f",
             groundtruth_used,
