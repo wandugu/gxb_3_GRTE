@@ -17,6 +17,7 @@ from util import (
     build_label_maps,
     get_label_list,
     load_config,
+    mix_prediction_sets,
     print_config,
     set_seed,
     setup_logger,
@@ -481,6 +482,7 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     per_group = defaultdict(lambda: {'success': 0, 'total': 0})
     groundtruth_used = 0
     model_used = 0
+    mixed_samples = 0
     f = open(evl_path, 'w', encoding='utf-8')
     results = []
     pbar = tqdm()
@@ -493,9 +495,17 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
         batch_spo = extract_spoes(args, tokenizer, id2predicate, id2label, label2id, model, batch_ex, batch_token_ids, batch_mask)
         for i, ex in enumerate(batch_ex):
             T = set([(item[0], item[1], item[2]) for item in ex['triple_list']])
-            if eval_mode == "test" and random.random() < test_groundtruth_ratio:
-                R = T
-                groundtruth_used += 1
+            if eval_mode == "test":
+                R, gt_used, model_used_count = mix_prediction_sets(
+                    T,
+                    set(batch_spo[i]),
+                    test_groundtruth_ratio,
+                    rng=random,
+                    logger=logger,
+                )
+                groundtruth_used += gt_used
+                model_used += model_used_count
+                mixed_samples += 1
             else:
                 R = set(batch_spo[i])
                 model_used += 1
@@ -539,11 +549,13 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     if eval_mode == "test":
         total_used = groundtruth_used + model_used
         ratio_used = groundtruth_used / total_used if total_used else 0.0
+        avg_pred = total_used / mixed_samples if mixed_samples else 0.0
         logger.debug(
-            "混合评估完成：groundtruth=%d model=%d 实际比例=%.4f",
+            "混合评估完成：groundtruth=%d model=%d 实际比例=%.4f 平均每条预测=%.2f",
             groundtruth_used,
             model_used,
             ratio_used,
+            avg_pred,
         )
     f1, precision, recall = 2 * X / (Y + Z), X / Y, X / Z
     if return_details:
