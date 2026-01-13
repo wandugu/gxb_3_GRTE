@@ -17,7 +17,7 @@ USAGE
 dataset="WebNLG"
 rounds=4
 epochs=50
-gpu_id=1
+gpu_id=0
 output_path=./ckpt
 save_interval=1
 

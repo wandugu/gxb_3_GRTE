@@ -8,6 +8,7 @@ from transformers.models.bert.modeling_bert import (
     BertOutput,
     BertSelfAttention,
 )
+import inspect
 
 class DecoderLayer(nn.Module):
     def __init__(self, config):
@@ -39,15 +40,38 @@ class DecoderLayer(nn.Module):
                     encoder_hidden_shape, encoder_attention_mask.shape
                 )
             )
-        encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * -10000.0 #1 1 0 0 -> 0 0 -1000 -1000
-        cross_attention_outputs = self.crossattention(
-            hidden_states=attention_output, encoder_hidden_states=encoder_hidden_states,  encoder_attention_mask=encoder_extended_attention_mask
-        )
-        attention_output = cross_attention_outputs[0] #B m H
+
+        encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * -10000.0  # 1 1 0 0 -> 0 0 -10000 -10000
+
+        # --- A-2: dynamically adapt to different transformers versions ---
+        import inspect
+
+        sig = inspect.signature(self.crossattention.forward).parameters
+
+        # base args (always safe)
+        kwargs = {
+            "hidden_states": attention_output,
+        }
+
+        # optional args (only pass if supported by this transformers version)
+        if "encoder_hidden_states" in sig:
+            kwargs["encoder_hidden_states"] = encoder_hidden_states
+
+        # some versions expect encoder_attention_mask, others only accept attention_mask
+        if "encoder_attention_mask" in sig:
+            kwargs["encoder_attention_mask"] = encoder_extended_attention_mask
+        elif "attention_mask" in sig:
+            # fallback: use attention_mask for cross-attn mask if encoder_attention_mask isn't supported
+            kwargs["attention_mask"] = encoder_extended_attention_mask
+
+        cross_attention_outputs = self.crossattention(**kwargs)
+        # --- end A-2 ---
+
+        attention_output = cross_attention_outputs[0]  # B m H
         outputs = outputs + cross_attention_outputs[1:]  # add cross attentions if we output attention weights
 
         intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, attention_output) #B m H
+        layer_output = self.output(intermediate_output, attention_output)  # B m H
         outputs = (layer_output,) + outputs
         return outputs
 

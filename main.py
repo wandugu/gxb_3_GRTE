@@ -182,7 +182,9 @@ def train(args):
     if getattr(args, "load_model", False):
         best_model = os.path.join(output_path, "best_model.bin")
         if os.path.exists(best_model):
-            train_model.load_state_dict(torch.load(best_model, map_location="cuda"))
+            state = torch.load(best_model, map_location="cuda")
+            state.pop("bert.embeddings.position_ids", None)  # 兼容不同transformers版本
+            train_model.load_state_dict(state, strict=True)
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -599,7 +601,10 @@ def test(args):
         is_train=False,
     )
 
-    train_model.load_state_dict(torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda"))
+    state = torch.load(os.path.join(output_path, "best_model.bin"), map_location="cuda")
+    missing, unexpected = train_model.load_state_dict(state, strict=False)
+    print("missing_keys:", missing)
+    print("unexpected_keys:", unexpected)
     test_result_path = os.path.join(result_dir, "test_result.json")
     f1, precision, recall, total, success, fail, detail_metrics, data_metrics = evaluate(
         args,
