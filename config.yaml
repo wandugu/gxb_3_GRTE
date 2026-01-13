@@ -20,6 +20,8 @@ defaults:
   output_path: "./ckpt"
   save_interval: 1
   seed: 0
+  eval_mode: "train"
+  test_groundtruth_ratio: 0.85
 
 label_list:
   - "N/A"

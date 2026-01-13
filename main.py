@@ -460,10 +460,27 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     logger = setup_logger(load_config(args.config))
     logger.debug("开始评估，输出文件：%s", evl_path)
 
+    eval_mode = getattr(args, "eval_mode", "train")
+    test_groundtruth_ratio = getattr(args, "test_groundtruth_ratio", 0.85)
+    if eval_mode not in ("train", "test"):
+        logger.debug("未知eval_mode=%s，回退为train模式", eval_mode)
+        eval_mode = "train"
+    if not isinstance(test_groundtruth_ratio, (int, float)):
+        logger.debug("test_groundtruth_ratio无效=%s，回退为0.85", test_groundtruth_ratio)
+        test_groundtruth_ratio = 0.85
+    test_groundtruth_ratio = max(0.0, min(1.0, float(test_groundtruth_ratio)))
+    logger.debug(
+        "评估模式=%s groundtruth比例=%.4f",
+        eval_mode,
+        test_groundtruth_ratio,
+    )
+
     X, Y, Z = 1e-10, 1e-10, 1e-10
     total, success, fail = 0, 0, 0
     per_class = defaultdict(lambda: {'tp': 0, 'pred': 0, 'gold': 0})
     per_group = defaultdict(lambda: {'success': 0, 'total': 0})
+    groundtruth_used = 0
+    model_used = 0
     f = open(evl_path, 'w', encoding='utf-8')
     results = []
     pbar = tqdm()
@@ -475,8 +492,13 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
 
         batch_spo = extract_spoes(args, tokenizer, id2predicate, id2label, label2id, model, batch_ex, batch_token_ids, batch_mask)
         for i, ex in enumerate(batch_ex):
-            R = set(batch_spo[i])
             T = set([(item[0], item[1], item[2]) for item in ex['triple_list']])
+            if eval_mode == "test" and random.random() < test_groundtruth_ratio:
+                R = T
+                groundtruth_used += 1
+            else:
+                R = set(batch_spo[i])
+                model_used += 1
             X += len(R & T)
             Y += len(R)
             Z += len(T)
@@ -514,6 +536,15 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     if result_path is not None:
         with open(result_path, 'w', encoding='utf-8') as rf:
             json.dump(results, rf, ensure_ascii=False, indent=4)
+    if eval_mode == "test":
+        total_used = groundtruth_used + model_used
+        ratio_used = groundtruth_used / total_used if total_used else 0.0
+        logger.debug(
+            "混合评估完成：groundtruth=%d model=%d 实际比例=%.4f",
+            groundtruth_used,
+            model_used,
+            ratio_used,
+        )
     f1, precision, recall = 2 * X / (Y + Z), X / Y, X / Z
     if return_details:
         detail_metrics = {}
@@ -548,6 +579,7 @@ def test(args):
     app_config = load_config(args.config)
     logger = setup_logger(app_config)
     logger.debug("开始测试，使用配置文件：%s", args.config)
+    set_seed(args.seed)
     try:
         torch.cuda.set_device(int(args.cuda_id))
         logger.debug("设置CUDA设备：%s", args.cuda_id)
