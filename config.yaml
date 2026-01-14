@@ -38,3 +38,8 @@ logging:
   sample_log: true
   sample_text_max_len: 200
   sample_triple_max_len: 200
+  sample_log_template: |-
+    测试样本 {index}/{total}
+    输入={text}
+    正确答案={gold}
+    模型预测={pred}

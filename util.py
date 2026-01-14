@@ -44,6 +44,29 @@ def format_preview(value, max_len=200):
         return f"{text[:max_len]}...(len={len(text)})"
     return text
 
+
+def format_sample_log(template, index, total, text, gold, pred, used=None):
+    payload = {
+        "index": index,
+        "total": total,
+        "text": text,
+        "gold": gold,
+        "pred": pred,
+        "used": used,
+    }
+    try:
+        return template.format(**payload)
+    except Exception:
+        fallback = (
+            f"测试样本 {index}/{total}\n"
+            f"输入={text}\n"
+            f"正确答案={gold}\n"
+            f"模型预测={pred}"
+        )
+        if used is not None:
+            fallback = f"{fallback}\n本次使用={used}"
+        return fallback
+
 def print_config(args):
     config_path = os.path.join(args.base_path, args.dataset, "output", "config.txt")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
