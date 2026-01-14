@@ -21,7 +21,7 @@ defaults:
   save_interval: 1
   seed: 0
   eval_mode: "test"
-  test_groundtruth_ratio: 0.90
+  test_groundtruth_ratio: 0.45
 
 label_list:
   - "N/A"
