@@ -37,6 +37,13 @@ def setup_logger(config=None):
     logger.setLevel(level)
     return logger
 
+
+def format_preview(value, max_len=200):
+    text = str(value)
+    if max_len and len(text) > max_len:
+        return f"{text[:max_len]}...(len={len(text)})"
+    return text
+
 def print_config(args):
     config_path = os.path.join(args.base_path, args.dataset, "output", "config.txt")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
