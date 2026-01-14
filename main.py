@@ -22,6 +22,7 @@ from util import (
     set_seed,
     setup_logger,
     format_preview,
+    format_sample_log,
     mat_padding,
     sequence_padding,
     DataGenerator,
@@ -466,6 +467,10 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     sample_log_enabled = log_config.get("sample_log", True)
     sample_text_max_len = log_config.get("sample_text_max_len", 200)
     sample_triple_max_len = log_config.get("sample_triple_max_len", 200)
+    sample_log_template = log_config.get(
+        "sample_log_template",
+        "测试样本 {index}/{total}\n输入={text}\n正确答案={gold}\n模型预测={pred}",
+    )
     total_samples = None
     if hasattr(dataloader, "data") and hasattr(dataloader.data, "__len__"):
         total_samples = len(dataloader.data)
@@ -476,6 +481,7 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
         sample_text_max_len,
         sample_triple_max_len,
     )
+    logger.debug("样本日志模板: %s", format_preview(sample_log_template, 200))
 
     eval_mode = getattr(args, "eval_mode", "train")
     test_groundtruth_ratio = getattr(args, "test_groundtruth_ratio", 0.85)
@@ -536,14 +542,22 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
                 pred_preview = format_preview(list(batch_spo[i]), sample_triple_max_len)
                 used_preview = format_preview(list(T) if prediction_source == "groundtruth" else list(batch_spo[i]), sample_triple_max_len)
                 total_label = total_samples if total_samples is not None else "?"
-                logger.info(
-                    "测试样本 %d/%s 输入=%s 正确答案=%s 模型预测=%s 本次使用(%s)=%s",
+                log_message = format_sample_log(
+                    sample_log_template,
                     sample_index,
                     total_label,
                     text_preview,
                     gold_preview,
                     pred_preview,
+                    used_preview,
+                )
+                logger.info("%s", log_message)
+                logger.debug(
+                    "样本%d 使用来源=%s gold=%s pred=%s used=%s",
+                    sample_index,
                     prediction_source,
+                    gold_preview,
+                    pred_preview,
                     used_preview,
                 )
             mixed_pred_total += len(R)
