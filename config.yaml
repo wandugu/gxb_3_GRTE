@@ -35,3 +35,6 @@ label_list:
 
 logging:
   level: "INFO"
+  sample_log: true
+  sample_text_max_len: 200
+  sample_triple_max_len: 200

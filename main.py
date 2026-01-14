@@ -21,6 +21,7 @@ from util import (
     print_config,
     set_seed,
     setup_logger,
+    format_preview,
     mat_padding,
     sequence_padding,
     DataGenerator,
@@ -458,8 +459,23 @@ def resolve_example_group(example):
 
 
 def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloader, evl_path, result_path=None, return_details=False):
-    logger = setup_logger(load_config(args.config))
+    app_config = load_config(args.config)
+    logger = setup_logger(app_config)
     logger.debug("开始评估，输出文件：%s", evl_path)
+    log_config = app_config.get("logging", {})
+    sample_log_enabled = log_config.get("sample_log", True)
+    sample_text_max_len = log_config.get("sample_text_max_len", 200)
+    sample_triple_max_len = log_config.get("sample_triple_max_len", 200)
+    total_samples = None
+    if hasattr(dataloader, "data") and hasattr(dataloader.data, "__len__"):
+        total_samples = len(dataloader.data)
+    logger.debug(
+        "评估样本总数=%s sample_log=%s text_max_len=%s triple_max_len=%s",
+        total_samples if total_samples is not None else "未知",
+        sample_log_enabled,
+        sample_text_max_len,
+        sample_triple_max_len,
+    )
 
     eval_mode = getattr(args, "eval_mode", "train")
     test_groundtruth_ratio = getattr(args, "test_groundtruth_ratio", 0.85)
@@ -487,6 +503,7 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
     f = open(evl_path, 'w', encoding='utf-8')
     results = []
     pbar = tqdm()
+    sample_index = 0
     for batch in dataloader:
 
         batch_ex = batch[-1]
@@ -495,6 +512,7 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
 
         batch_spo = extract_spoes(args, tokenizer, id2predicate, id2label, label2id, model, batch_ex, batch_token_ids, batch_mask)
         for i, ex in enumerate(batch_ex):
+            sample_index += 1
             T = set([(item[0], item[1], item[2]) for item in ex['triple_list']])
             if eval_mode == "test":
                 R, gt_used, model_used_count = mix_prediction_sets(
@@ -507,9 +525,27 @@ def evaluate(args, tokenizer, id2predicate, id2label, label2id, model, dataloade
                 groundtruth_used += gt_used
                 model_used += model_used_count
                 mixed_samples += 1
+                prediction_source = "groundtruth" if gt_used else "model"
             else:
                 R = set(batch_spo[i])
                 model_used += 1
+                prediction_source = "model"
+            if sample_log_enabled and getattr(args, "train", "train") == "test":
+                text_preview = format_preview(ex.get("text", ""), sample_text_max_len)
+                gold_preview = format_preview(list(T), sample_triple_max_len)
+                pred_preview = format_preview(list(batch_spo[i]), sample_triple_max_len)
+                used_preview = format_preview(list(T) if prediction_source == "groundtruth" else list(batch_spo[i]), sample_triple_max_len)
+                total_label = total_samples if total_samples is not None else "?"
+                logger.info(
+                    "测试样本 %d/%s 输入=%s 正确答案=%s 模型预测=%s 本次使用(%s)=%s",
+                    sample_index,
+                    total_label,
+                    text_preview,
+                    gold_preview,
+                    pred_preview,
+                    prediction_source,
+                    used_preview,
+                )
             mixed_pred_total += len(R)
             X += len(R & T)
             Y += len(R)
