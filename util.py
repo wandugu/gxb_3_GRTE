@@ -24,8 +24,8 @@ def load_config(config_path):
 def setup_logger(config=None):
     config = config or {}
     log_config = config.get("logging", {})
-    level_name = log_config.get("level", "DEBUG")
-    level = getattr(logging, level_name.upper(), logging.DEBUG)
+    level_name = log_config.get("level", "INFO")
+    level = getattr(logging, level_name.upper(), logging.INFO)
     logger = logging.getLogger("grte")
     if not logger.handlers:
         handler = logging.StreamHandler()
